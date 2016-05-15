@@ -1,0 +1,143 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+import curses
+import locale
+import os
+
+ELM = {} # str -> unicode
+TBL = {} # str -> list<unicode>
+
+def encode(u):
+  """unicode -> str"""
+  return u.encode('utf8')
+
+def decode(s):
+  """str -> unicode"""
+  return s.decode('utf8')
+
+def select_character():
+  """Show candidates and let user choose one."""
+  global txt
+
+  def draw_row(i, light=False):
+    wsel.move(i, 0)
+    for j in xrange(len(rows[i])):
+      wsel.addstr('%d %s ' % ((j + 1) % 10, encode(rows[i][j])),
+                  curses.A_REVERSE if light else 0)
+    wsel.addstr('\n')
+
+  if buf not in TBL:
+    return
+
+  rows = []
+  for c in TBL[buf]:
+    if len(rows) == 0 or len(rows[-1]) == 10:
+      rows.append([])
+    rows[-1].append(c)
+  rows = rows[:10]
+
+  for i in xrange(len(rows)):
+    draw_row(i, i == 0)
+  wsel.refresh()
+
+  i = 0
+  while True:
+    c = stdscr.getch()
+    if c == curses.KEY_UP:
+      if i > 0:
+        draw_row(i, False)
+        i -= 1
+        draw_row(i, True)
+        wsel.refresh()
+    elif c == curses.KEY_DOWN:
+      if i + 1 < len(rows):
+        draw_row(i, False)
+        i += 1
+        draw_row(i, True)
+        wsel.refresh()
+    elif ord('0') <= c <= ord('9'):
+      j = (c - ord('0') + 9) % 10
+      if j < len(rows[i]):
+        txt += rows[i][j]
+      break
+  wsel.clear()
+  wsel.refresh()
+
+def set_clipboard(u):
+  """Set CLIPBOARD to the given unicode string."""
+  with os.popen('xsel -bi', 'w') as f:
+    f.write(encode(u))
+
+def redraw():
+  """Redraw wbuf and wtxt."""
+  tmp = '注音 '
+  for c in buf:
+    tmp += encode(ELM[c])
+  wbuf.clear()
+  wbuf.addstr(tmp)
+  wbuf.refresh()
+
+  wtxt.clear()
+  wtxt.addstr('[中] ' if mode else '[英] ')
+  wtxt.addstr(encode(txt))
+  wtxt.refresh()
+
+def cmain(arg):
+  global stdscr, wtxt, wbuf, wsel, mode, txt, buf
+  stdscr = arg
+  H, W = stdscr.getmaxyx()
+  assert H >= 12 and W > 50
+  wtxt = stdscr.derwin(1, W, 0, 0)
+  wbuf = stdscr.derwin(1, W, 1, 0)
+  wsel = stdscr.derwin(2, 0)
+  mode = True # True: Chinese mode; False: English mode
+  txt, buf = u'', ''
+  while True:
+    redraw()
+    c = stdscr.getch()
+    if c == 27: # ESCAPE
+      break
+    elif c == 9: # TAB
+      mode = not mode
+      buf = ''
+    elif c == 10: # ENTER
+      set_clipboard(txt)
+      txt, buf = u'', ''
+    elif c == curses.KEY_BACKSPACE:
+      if buf != '':
+        buf = buf[:-1]
+      else:
+        txt = txt[:-1]
+    elif 0 <= c <= 255:
+      c = chr(c)
+      if not mode:
+        txt += c
+      elif c in ELM:
+        buf += c
+      elif c == ' ':
+        select_character()
+        buf = ''
+
+def load():
+  # Load .elm into ELM
+  with open('zhuyin.elm') as f:
+    for line in f:
+      sline = line.split()
+      key, val = sline[0], decode(sline[1])
+      ELM[key] = val
+  # Load .tbl into TBL
+  with open('zhuyin.tbl') as f:
+    for line in f:
+      sline = line.split()
+      key, val = sline[0], decode(sline[1])
+      if key not in TBL:
+        TBL[key] = []
+      TBL[key].append(val)
+
+def main():
+  locale.setlocale(locale.LC_ALL, '')
+  load()
+  curses.wrapper(cmain)
+
+if __name__ == '__main__':
+  main()
