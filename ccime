@@ -78,7 +78,7 @@ def redraw():
   wbuf.refresh()
 
   wtxt.clear()
-  wtxt.addstr('[中] ' if mode else '[英] ')
+  wtxt.addstr('[中] ' if mode else '[En] ')
   wtxt.addstr(encode(txt))
   wtxt.refresh()
 
